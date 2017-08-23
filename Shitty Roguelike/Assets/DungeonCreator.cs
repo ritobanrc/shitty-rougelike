@@ -51,6 +51,7 @@ public class DungeonCreator : MonoBehaviour
     public int maxRoomSize = 8;
     public GameObject wallPrefab;
     public GameObject roomFloorPrefab; // FIXME: Add room edge prefabs
+    public float newRoomProb = 0.02f;
 
     private Random rand;
 
@@ -60,6 +61,9 @@ public class DungeonCreator : MonoBehaviour
         FindObjectOfType<PlayerController>().OnPlayerMove += PlayerController_OnPlayerMove;
     }
 
+    public Dictionary<Coord, GameObject> CoordGameObjectMap;
+    protected HashSet<Coord> exploredArea;
+
     private void PlayerController_OnPlayerMove(int h, int v, Coord PlayerPosition)
     {
         CheckHVValues(h, v);
@@ -67,7 +71,16 @@ public class DungeonCreator : MonoBehaviour
         bool horizontal = Mathf.Abs(h) > Mathf.Abs(v);
         bool positive = Mathf.Sign(horizontal ? h : v) == 1;
 
-        Rect area = new Rect(0, 0, 0, 0);
+        // This represents the new total area to display. We will disable everything, then turn on the gameobjects inside this
+        //Rect area = new Rect(
+        //    PlayerPosition.x - areaAroundPlayerX / 2,
+        //    PlayerPosition.y - areaAroundPlayerY / 2,
+        //    PlayerPosition.x + areaAroundPlayerX / 2,
+        //    PlayerPosition.y + areaAroundPlayerY / 2
+        //    );
+        Rect area = new Rect(PlayerPosition.x - areaAroundPlayerX / 2, PlayerPosition.y - areaAroundPlayerY / 2, 0, 0);
+        area.End = new Coord(PlayerPosition.x + areaAroundPlayerX / 2, PlayerPosition.y + areaAroundPlayerY / 2);
+        //Debug.Log(area);
         /* We need to know the players position
          * The players position is never recorded. 
          * It can be calculated based on the unity transform component
@@ -76,33 +89,148 @@ public class DungeonCreator : MonoBehaviour
          *  But this is extra bookkeeping and requires passing around another value
          * I think the second is the better solution. I'll see what I think in the morning
          */
-        if (horizontal)
+
+        foreach (KeyValuePair<Coord, GameObject> kvp in CoordGameObjectMap)
         {
-            area.size.y = 1;
+            if(area.Contains(kvp.Key) == false)
+            {
+                    kvp.Value.SetActive(false);
+            }
+            
         }
-        else
+
+
+        // TODO: A lot of duplicated code between this and Initial Generate
+        for (int x = area.start.x; x < area.End.x; x++)
         {
-            area.size.x = 1;
+            for (int y = area.start.y; y < area.End.y; y++)
+            {
+                Coord c = new Coord(x, y);
+                if(exploredArea.Contains(c) == false)
+                {
+                    if (c.x % 2 != 0 && c.y % 2 != 0)
+                    {
+                        if (rand.NextDouble() < newRoomProb)
+                        {
+                            int startX = c.x;
+                            int startY = c.y;
+                            int sizeX = NextRandomOdd(minRoomSize, maxRoomSize);
+                            int sizeY = NextRandomOdd(minRoomSize, maxRoomSize);
+                            Room room = new Room(startX, startY, sizeX, sizeY);
+                            bool roomValid = CheckRoomValid(room);
+                            if (roomValid)
+                            {
+                                rooms.Add(room);
+
+                            }
+                        }
+                    }
+                    exploredArea.Add(c);
+                }
+                if (CoordGameObjectMap.ContainsKey(c))
+                {
+                    CoordGameObjectMap[c].SetActive(true);
+                }
+                else
+                {
+                    GameObject prefab = GetPrefabForCoord(c);
+                    GameObject obj = Instantiate(prefab, new Vector3(x, y), Quaternion.identity, this.transform);
+                    obj.name = prefab.name + " " + x + " " + y;
+                    RoomDebugInfo debug = obj.GetComponent<RoomDebugInfo>();
+                    if (debug != null)
+                    {
+                        Room r;
+                        IsInRoom(x, y, out r);
+                        debug.Room = r;
+                    }
+                    CoordGameObjectMap.Add(c, obj);
+                }
+
+            }
         }
-        if (!positive)
+
+    }
+
+    private bool CheckRoomValid(Room room)
+    {
+        bool roomValid = true;
+        for (int x = room.start.x; x < room.End.x; x++)
         {
-            // PlayerPosition has already moved in the correct direction
-            area.start.x = PlayerPosition.x - areaAroundPlayerX / 2;
-            area.start.y = PlayerPosition.y - areaAroundPlayerY / 2;
+            if (roomValid == false)
+                break;
+            for (int y = room.start.y; y < room.End.y; y++)
+            {
+                if (roomValid == false)
+                    break;
+                if (IsInRoom(x, y))
+                    roomValid = false;
+            }
         }
+        return roomValid;
+    }
+
+    private void InitialGenerate()
+    {
+        rooms = new List<Room>();
+        CoordGameObjectMap = new Dictionary<Coord, GameObject>();
+        exploredArea = new HashSet<Coord>();
+        if (useRandomSeed)
+            seed = (int)Network.time;
+        rand = new Random(seed);
+        for (int i = 0; i < initRoomAttempts; i++)
+        {
+            int startX = NextRandomOdd(-areaAroundPlayerX / 2, areaAroundPlayerX / 2);
+            int startY = NextRandomOdd(-areaAroundPlayerY / 2, areaAroundPlayerY / 2);
+            int sizeX = NextRandomOdd(minRoomSize, maxRoomSize);
+            int sizeY = NextRandomOdd(minRoomSize, maxRoomSize);
+            Room room = new Room(startX, startY, sizeX, sizeY);
+            bool roomValid = CheckRoomValid(room);
+            if (roomValid)
+            {
+                rooms.Add(room);
+            }
+        }
+
+        for (int x = -areaAroundPlayerX / 2; x < areaAroundPlayerX / 2; x++)
+        {
+            for (int y = -areaAroundPlayerY / 2; y < areaAroundPlayerY / 2; y++)
+            {
+                Coord c = new Coord(x, y);
+                GameObject prefab = GetPrefabForCoord(c);
+                GameObject obj = Instantiate(prefab, new Vector3(x, y), Quaternion.identity, this.transform);
+                obj.name = prefab.name + " " + x + " " + y;
+                RoomDebugInfo debug = obj.GetComponent<RoomDebugInfo>();
+                if (debug != null)
+                {
+                    Room r;
+                    IsInRoom(x, y, out r);
+                    debug.Room = r;
+                }
+                CoordGameObjectMap.Add(new Coord(x, y), obj);
+                exploredArea.Add(c);
+            }
+        }
+    }
+
+    private GameObject GetPrefabForCoord(Coord c)
+    {
+        GameObject prefab = wallPrefab;
+
+        Room r;
+        if (IsInRoom(c.x, c.y, out r))
+            prefab = roomFloorPrefab;
+        return prefab;
     }
 
     private void CheckHVValues(int h, int v)
     {
         if (h == 0 && v == 0)
         {
-            Debug.LogError("OnPlayerMove was called but h and v are both zero");
-            return;
+            throw new UnityException("OnPlayerMove was called but h and v are both zero");
         }
         if (h + v > 1)
         {
-            Debug.LogError("OnPlayerMove was called but the sum of h and v > 1");
-            return;
+            throw new UnityException("OnPlayerMove was called but the sum of h and v > 1");
         }
     }
 
@@ -111,6 +239,17 @@ public class DungeonCreator : MonoBehaviour
     {
         public Coord start;
         public Coord size;
+        public Coord End
+        {
+            get
+            {
+                return new Coord(start.x + size.x, start.y + size.y);
+            }
+            set
+            {
+                size = new Coord(value.x - start.x, value.y - start.y);
+            }
+        }
         public Rect(int startX, int startY, int sizeX, int sizeY)
             : this(new Coord(startX, startY), new Coord(sizeX, sizeY)) { }
         public Rect(Coord start, Coord size)
@@ -122,9 +261,14 @@ public class DungeonCreator : MonoBehaviour
         {
             return (a.x >= start.x && a.x < start.x + size.x && a.y >= start.y && a.y < start.y + size.y);
         }
+        public override string ToString()
+        {
+            return "Rect: Start: (" + start.x + ", " + start.y + ") Size: (" + size.x + ", " + size.y + ")";
+        }
     }
 
     // A room is a rect
+    [Serializable]
     public class Room : Rect
     {
         public Room(int startX, int startY, int sizeX, int sizeY) : base(startX, startY, sizeX, sizeY) { }
@@ -134,57 +278,6 @@ public class DungeonCreator : MonoBehaviour
 
     List<Room> rooms;
 
-    private void InitialGenerate()
-    {
-        rooms = new List<Room>();
-        if (useRandomSeed)
-            seed = (int)Network.time;
-        rand = new Random(seed);
-        for (int i = 0; i < initRoomAttempts; i++)
-        {
-            int startX = NextRandomOdd(-areaAroundPlayerX / 2, areaAroundPlayerX / 2);
-            int startY = NextRandomOdd(-areaAroundPlayerY / 2, areaAroundPlayerY / 2);
-            int sizeX = NextRandomOdd(minRoomSize, maxRoomSize);
-            int sizeY = NextRandomOdd(minRoomSize, maxRoomSize);
-            bool roomValid = true;
-            for (int x = startX; x < startX + sizeX; x++)
-            {
-                if (roomValid == false)
-                    break;
-                for (int y = startY; y < startY + sizeY; y++)
-                {
-                    if (roomValid == false)
-                        break; ;
-                    if (IsInRoom(x, y))
-                        roomValid = false;
-                }
-            }
-            if (roomValid)
-            {
-                Room room = new Room(startX, startY, sizeX, sizeY);
-                rooms.Add(room);
-            }
-        }
-
-        for (int x = -areaAroundPlayerX / 2; x < areaAroundPlayerX / 2; x++)
-        {
-            for (int y = -areaAroundPlayerY / 2; y < areaAroundPlayerY / 2; y++)
-            {
-                GameObject prefab = wallPrefab;
-
-                Room r;
-                if (IsInRoom(x, y, out r))
-                    prefab = roomFloorPrefab;
-                GameObject obj = Instantiate(prefab, new Vector3(x, y), Quaternion.identity, this.transform);
-                obj.name = prefab.name + " " + x + " " + y;
-                RoomDebugInfo debug = obj.GetComponent<RoomDebugInfo>();
-                if (debug != null)
-                {
-                    debug.Room = r;
-                }
-            }
-        }
-    }
 
     private bool IsInRoom(int x, int y, out Room room)
     {
