@@ -5,12 +5,18 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
+    public Coord PlayerPosition { get; protected set; }
     public float animSpeed = 5;
     public float waitAfterMove = 0.3f;
 
     private bool moving = false;
 
-    public Action<int, int> OnPlayerMove;
+    public Action<int, int, Coord> OnPlayerMove;
+
+    private void Start()
+    {
+        PlayerPosition = new Coord(0, 0);
+    }
 
     private void Update()
     {
@@ -24,8 +30,9 @@ public class PlayerController : MonoBehaviour
             {
                 return;
             }
+            PlayerPosition = new Coord(PlayerPosition.x + h, PlayerPosition.y + v);
             if (OnPlayerMove != null)
-                OnPlayerMove(h, v);
+                OnPlayerMove(h, v, PlayerPosition);
             StartCoroutine(Movement(h, v));
         }
     }
@@ -38,10 +45,10 @@ public class PlayerController : MonoBehaviour
         Vector3 finalPos = this.transform.position + new Vector3(h, v);
         while (Vector3.Distance(this.transform.position, finalPos) > 0.007)
         {
-            this.transform.position = Vector3.SmoothDamp(this.transform.position, finalPos, ref velocity, 1f/animSpeed);
+            this.transform.position = Vector3.SmoothDamp(this.transform.position, finalPos, ref velocity, 1f / animSpeed);
             yield return null;
         }
-        this.transform.position = finalPos; 
+        this.transform.position = finalPos;
         yield return new WaitForSeconds(waitAfterMove);
         moving = false;
     }

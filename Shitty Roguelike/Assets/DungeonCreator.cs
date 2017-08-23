@@ -60,19 +60,60 @@ public class DungeonCreator : MonoBehaviour
         FindObjectOfType<PlayerController>().OnPlayerMove += PlayerController_OnPlayerMove;
     }
 
-    private void PlayerController_OnPlayerMove(int h, int v)
+    private void PlayerController_OnPlayerMove(int h, int v, Coord PlayerPosition)
     {
-        throw new NotImplementedException();
+        CheckHVValues(h, v);
+        // We know only either h OR v is 1 (and one of them must be 1)
+        bool horizontal = Mathf.Abs(h) > Mathf.Abs(v);
+        bool positive = Mathf.Sign(horizontal ? h : v) == 1;
+
+        Rect area = new Rect(0, 0, 0, 0);
+        /* We need to know the players position
+         * The players position is never recorded. 
+         * It can be calculated based on the unity transform component
+         *  but this is hackish
+         * the player could keep a coord value as its position
+         *  But this is extra bookkeeping and requires passing around another value
+         * I think the second is the better solution. I'll see what I think in the morning
+         */
+        if (horizontal)
+        {
+            area.size.y = 1;
+        }
+        else
+        {
+            area.size.x = 1;
+        }
+        if (!positive)
+        {
+            // PlayerPosition has already moved in the correct direction
+            area.start.x = PlayerPosition.x - areaAroundPlayerX / 2;
+            area.start.y = PlayerPosition.y - areaAroundPlayerY / 2;
+        }
+    }
+
+    private void CheckHVValues(int h, int v)
+    {
+        if (h == 0 && v == 0)
+        {
+            Debug.LogError("OnPlayerMove was called but h and v are both zero");
+            return;
+        }
+        if (h + v > 1)
+        {
+            Debug.LogError("OnPlayerMove was called but the sum of h and v > 1");
+            return;
+        }
     }
 
     [Serializable]
-    public class Room
+    public class Rect
     {
         public Coord start;
         public Coord size;
-        public Room(int startX, int startY, int sizeX, int sizeY)
+        public Rect(int startX, int startY, int sizeX, int sizeY)
             : this(new Coord(startX, startY), new Coord(sizeX, sizeY)) { }
-        public Room(Coord start, Coord size) 
+        public Rect(Coord start, Coord size)
         {
             this.start = start;
             this.size = size;
@@ -83,17 +124,11 @@ public class DungeonCreator : MonoBehaviour
         }
     }
 
-    [Serializable]
-    public struct Coord
+    // A room is a rect
+    public class Room : Rect
     {
-        // FIXME: Should be readonly. Not readonly for debugging reasons (and because I'm too lazy to write a custom inspector)
-        public int x;
-        public int y;
-        public Coord(int x, int y)
-        {
-            this.x = x;
-            this.y = y; 
-        }
+        public Room(int startX, int startY, int sizeX, int sizeY) : base(startX, startY, sizeX, sizeY) { }
+        public Room(Coord start, Coord size) : base(start, size) { }
     }
 
 
@@ -131,9 +166,9 @@ public class DungeonCreator : MonoBehaviour
             }
         }
 
-        for (int x = -areaAroundPlayerX/2; x < areaAroundPlayerX/2; x++)
+        for (int x = -areaAroundPlayerX / 2; x < areaAroundPlayerX / 2; x++)
         {
-            for (int y = -areaAroundPlayerY/2; y < areaAroundPlayerY/2; y++)
+            for (int y = -areaAroundPlayerY / 2; y < areaAroundPlayerY / 2; y++)
             {
                 GameObject prefab = wallPrefab;
 
@@ -143,7 +178,7 @@ public class DungeonCreator : MonoBehaviour
                 GameObject obj = Instantiate(prefab, new Vector3(x, y), Quaternion.identity, this.transform);
                 obj.name = prefab.name + " " + x + " " + y;
                 RoomDebugInfo debug = obj.GetComponent<RoomDebugInfo>();
-                if(debug != null)
+                if (debug != null)
                 {
                     debug.Room = r;
                 }
@@ -155,7 +190,7 @@ public class DungeonCreator : MonoBehaviour
     {
         for (int i = 0; i < rooms.Count; i++)
         {
-            if(rooms[i].Contains(new Coord(x, y)))
+            if (rooms[i].Contains(new Coord(x, y)))
             {
                 room = rooms[i];
                 return true;
@@ -174,7 +209,7 @@ public class DungeonCreator : MonoBehaviour
     private int NextRandomOdd(int min, int max)
     {
         int a = 0;
-        while(a%2 == 0)
+        while (a % 2 == 0)
         {
             a = rand.Next(min, max);
         }
