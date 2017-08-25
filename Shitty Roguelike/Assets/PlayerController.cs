@@ -9,6 +9,7 @@ public class PlayerController : MonoBehaviour
     public float animSpeed = 5;
     public float waitAfterMove = 0.3f;
     public float maxSpeed = 5;
+    public bool teleport = false;
 
     private bool moving = false;
 
@@ -27,10 +28,10 @@ public class PlayerController : MonoBehaviour
         int v = (int)Input.GetAxisRaw("Vertical");
         if (Mathf.Max(Mathf.Abs(h), Mathf.Abs(v)) > 0.8)
         {
-            if (Mathf.Abs(h) + Mathf.Abs(v) > 1)
-            {
-                return;
-            }
+            //if (Mathf.Abs(h) + Mathf.Abs(v) > 1)
+            //{
+            //    return;
+            //}
             PlayerPosition = new Coord(PlayerPosition.x + h, PlayerPosition.y + v);
             if (OnPlayerMove != null)
                 OnPlayerMove(h, v, PlayerPosition);
@@ -44,7 +45,7 @@ public class PlayerController : MonoBehaviour
     {
         moving = true;
         Vector3 finalPos = this.transform.position + new Vector3(h, v);
-        while (Vector3.Distance(this.transform.position, finalPos) > 0.01)
+        while (Vector3.Distance(this.transform.position, finalPos) > 0.01 && teleport == false)
         {
             this.transform.position = Vector3.SmoothDamp(this.transform.position, finalPos, ref velocity, 1f / animSpeed, maxSpeed);
             yield return null;

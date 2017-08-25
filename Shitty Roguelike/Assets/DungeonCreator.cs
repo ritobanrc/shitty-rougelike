@@ -64,12 +64,11 @@ public class DungeonCreator : MonoBehaviour
     public Dictionary<Coord, GameObject> CoordGameObjectMap;
     protected HashSet<Coord> exploredArea;
 
+    // TODO: This function needs to be greatly optimized. 
     private void PlayerController_OnPlayerMove(int h, int v, Coord PlayerPosition)
     {
+        // Make sure that the h and v values are good
         CheckHVValues(h, v);
-        // We know only either h OR v is 1 (and one of them must be 1)
-        bool horizontal = Mathf.Abs(h) > Mathf.Abs(v);
-        bool positive = Mathf.Sign(horizontal ? h : v) == 1;
 
         // This represents the new total area to display. We will disable everything, then turn on the gameobjects inside this
         //Rect area = new Rect(
@@ -90,6 +89,7 @@ public class DungeonCreator : MonoBehaviour
          * I think the second is the better solution. I'll see what I think in the morning
          */
 
+        // Disable the gameobjects that shouldn't be rendered
         foreach (KeyValuePair<Coord, GameObject> kvp in CoordGameObjectMap)
         {
             if(area.Contains(kvp.Key) == false)
@@ -101,32 +101,53 @@ public class DungeonCreator : MonoBehaviour
 
 
         // TODO: A lot of duplicated code between this and Initial Generate
+        // For each tile that should be rendered...
         for (int x = area.start.x; x < area.End.x; x++)
         {
             for (int y = area.start.y; y < area.End.y; y++)
             {
                 Coord c = new Coord(x, y);
+                // If this earea hasn't been explored, give it the chance to create a new room
                 if(exploredArea.Contains(c) == false)
                 {
+                    // make sure this is odd. even tiles are reserved for walls. 
                     if (c.x % 2 != 0 && c.y % 2 != 0)
                     {
+                        // newRoomProb * 100 % of the time, add a room
                         if (rand.NextDouble() < newRoomProb)
                         {
                             int startX = c.x;
                             int startY = c.y;
+                            // chose the size. odd for the same reason start is odd
                             int sizeX = NextRandomOdd(minRoomSize, maxRoomSize);
                             int sizeY = NextRandomOdd(minRoomSize, maxRoomSize);
                             Room room = new Room(startX, startY, sizeX, sizeY);
+                            // make sure this room doesn't intersect any other room
                             bool roomValid = CheckRoomValid(room);
                             if (roomValid)
                             {
+                                // add to the rooms list (set)
                                 rooms.Add(room);
-
+                                // destroy the gameobject for all of the tiles in the rooms. they will be remade later with the correct graphics
+                                for(int i = room.start.x; i < room.End.x; i++)
+                                {
+                                    for(int j = room.start.y; j < room.End.y; j++)
+                                    {
+                                        Coord c2 = new Coord(i, j);
+                                        if (CoordGameObjectMap.ContainsKey(c2))
+                                        {
+                                            GameObject obj = CoordGameObjectMap[c2];
+                                            Destroy(obj);
+                                            CoordGameObjectMap.Remove(c2);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                     exploredArea.Add(c);
                 }
+                //...either enable the gameobject OR create a new one
                 if (CoordGameObjectMap.ContainsKey(c))
                 {
                     CoordGameObjectMap[c].SetActive(true);
@@ -171,7 +192,7 @@ public class DungeonCreator : MonoBehaviour
 
     private void InitialGenerate()
     {
-        rooms = new List<Room>();
+        rooms = new HashSet<Room>();
         CoordGameObjectMap = new Dictionary<Coord, GameObject>();
         exploredArea = new HashSet<Coord>();
         if (useRandomSeed)
@@ -228,10 +249,10 @@ public class DungeonCreator : MonoBehaviour
         {
             throw new UnityException("OnPlayerMove was called but h and v are both zero");
         }
-        if (h + v > 1)
-        {
-            throw new UnityException("OnPlayerMove was called but the sum of h and v > 1");
-        }
+        //if (h + v > 1)
+        //{
+        //    throw new UnityException("OnPlayerMove was called but the sum of h and v > 1");
+        //}
     }
 
     [Serializable]
@@ -276,16 +297,16 @@ public class DungeonCreator : MonoBehaviour
     }
 
 
-    List<Room> rooms;
+    HashSet<Room> rooms;
 
 
     private bool IsInRoom(int x, int y, out Room room)
     {
-        for (int i = 0; i < rooms.Count; i++)
+        foreach(Room r in rooms)
         {
-            if (rooms[i].Contains(new Coord(x, y)))
+            if (r.Contains(new Coord(x, y)))
             {
-                room = rooms[i];
+                room = r;
                 return true;
             }
         }
